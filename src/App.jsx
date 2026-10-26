@@ -213,11 +213,12 @@ export default function App() {
      PLAYER VIEW LOGIC & LOCKING VALIDATION
      ======================================================== */
   const handleInputChange = (slotNumber, field, value) => {
+    const formattedValue = field === 'teamName' ? value.toUpperCase() : value;
     setDraftInputs(prev => ({
       ...prev,
       [slotNumber]: {
         ...prev[slotNumber],
-        [field]: value
+        [field]: formattedValue
       }
     }));
     if (errors[slotNumber]) {
@@ -293,11 +294,12 @@ export default function App() {
   };
 
   const handleEditChange = (slotNumber, field, value) => {
+    const formattedValue = field === 'teamName' ? value.toUpperCase() : value;
     setEditingSlots(prev => ({
       ...prev,
       [slotNumber]: {
         ...prev[slotNumber],
-        [field]: value,
+        [field]: formattedValue,
         error: ''
       }
     }));
@@ -376,11 +378,12 @@ export default function App() {
   };
 
   const handleAssignChange = (slotNumber, field, value) => {
+    const formattedValue = field === 'teamName' ? value.toUpperCase() : value;
     setAssigningSlots(prev => ({
       ...prev,
       [slotNumber]: {
         ...prev[slotNumber],
-        [field]: value,
+        [field]: formattedValue,
         error: ''
       }
     }));
@@ -699,10 +702,11 @@ export default function App() {
                         <input 
                           id={`team-input-${slot.slotNumber}`}
                           type="text" 
-                          className="form-input" 
+                          className="form-input caps-input" 
                           placeholder="Enter squad name..."
                           value={draft.teamName}
                           onChange={(e) => handleInputChange(slot.slotNumber, 'teamName', e.target.value)}
+                          style={{ textTransform: 'uppercase' }}
                         />
                       </div>
 
@@ -921,10 +925,11 @@ export default function App() {
                           </label>
                           <input 
                             type="text"
-                            className="admin-inline-input"
+                            className="admin-inline-input caps-input"
                             value={editData.teamName}
                             onChange={(e) => handleEditChange(slot.slotNumber, 'teamName', e.target.value)}
                             placeholder="Team Name"
+                            style={{ textTransform: 'uppercase' }}
                             autoFocus
                           />
                         </div>
@@ -979,10 +984,11 @@ export default function App() {
                           </label>
                           <input 
                             type="text"
-                            className="admin-inline-input"
+                            className="admin-inline-input caps-input"
                             value={assignData.teamName}
                             onChange={(e) => handleAssignChange(slot.slotNumber, 'teamName', e.target.value)}
                             placeholder="Enter Team Name"
+                            style={{ textTransform: 'uppercase' }}
                             autoFocus
                           />
                         </div>

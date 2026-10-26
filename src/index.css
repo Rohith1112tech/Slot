@@ -526,6 +526,17 @@ body::before {
   user-select: none;
 }
 
+/* Force Uppercase on Team Names */
+.caps-input {
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.caps-input::placeholder {
+  text-transform: none;
+  letter-spacing: normal;
+}
+
 /* Buttons */
 .claim-btn {
   width: 100%;
