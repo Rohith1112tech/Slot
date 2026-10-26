@@ -242,10 +242,10 @@ export default function App() {
     const teamName = (currentDraft.teamName || '').trim();
     const iglName = (currentDraft.iglName || '').trim();
 
-    if (!teamName || !iglName) {
+    if (!teamName) {
       setErrors(prev => ({
         ...prev,
-        [slotNumber]: 'Both Team Name & IGL Name are required!'
+        [slotNumber]: 'Team Name is required!'
       }));
       return;
     }
@@ -312,12 +312,12 @@ export default function App() {
     const teamName = (editData.teamName || '').trim();
     const iglName = (editData.iglName || '').trim();
 
-    if (!teamName || !iglName) {
+    if (!teamName) {
       setEditingSlots(prev => ({
         ...prev,
         [slotNumber]: {
           ...prev[slotNumber],
-          error: 'Team Name and IGL Name cannot be blank!'
+          error: 'Team Name cannot be blank!'
         }
       }));
       return;
@@ -396,12 +396,12 @@ export default function App() {
     const teamName = (assignData.teamName || '').trim();
     const iglName = (assignData.iglName || '').trim();
 
-    if (!teamName || !iglName) {
+    if (!teamName) {
       setAssigningSlots(prev => ({
         ...prev,
         [slotNumber]: {
           ...prev[slotNumber],
-          error: 'Both Team Name & IGL Name are required!'
+          error: 'Team Name is required!'
         }
       }));
       return;
@@ -712,13 +712,13 @@ export default function App() {
 
                       <div className="form-group" style={{ marginBottom: '14px' }}>
                         <label className="form-label" htmlFor={`igl-input-${slot.slotNumber}`}>
-                          IGL Name
+                          IGL Name <span style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 500, textTransform: 'none' }}>(Optional)</span>
                         </label>
                         <input 
                           id={`igl-input-${slot.slotNumber}`}
                           type="text" 
                           className="form-input" 
-                          placeholder="Enter leader handle..."
+                          placeholder="Leader handle (optional)..."
                           value={draft.iglName}
                           onChange={(e) => handleInputChange(slot.slotNumber, 'iglName', e.target.value)}
                         />
@@ -936,14 +936,14 @@ export default function App() {
 
                         <div className="form-group">
                           <label className="form-label" style={{ fontSize: '0.78rem' }}>
-                            IGL Name
+                            IGL Name <span style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 500, textTransform: 'none' }}>(Optional)</span>
                           </label>
                           <input 
                             type="text"
                             className="admin-inline-input"
                             value={editData.iglName}
                             onChange={(e) => handleEditChange(slot.slotNumber, 'iglName', e.target.value)}
-                            placeholder="IGL Name"
+                            placeholder="IGL Name (optional)"
                           />
                         </div>
 
@@ -995,14 +995,14 @@ export default function App() {
 
                         <div className="form-group">
                           <label className="form-label" style={{ fontSize: '0.78rem' }}>
-                            Assign IGL Name
+                            Assign IGL Name <span style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 500, textTransform: 'none' }}>(Optional)</span>
                           </label>
                           <input 
                             type="text"
                             className="admin-inline-input"
                             value={assignData.iglName}
                             onChange={(e) => handleAssignChange(slot.slotNumber, 'iglName', e.target.value)}
-                            placeholder="Enter IGL Name"
+                            placeholder="Enter IGL Name (optional)"
                           />
                         </div>
 
