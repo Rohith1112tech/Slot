@@ -136,7 +136,7 @@ body::before {
 .header-actions-group {
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 14px;
   flex-wrap: wrap;
 }
 
@@ -204,42 +204,30 @@ body::before {
   }
 }
 
-/* Navigation Tabs */
-.view-toggle-nav {
-  display: flex;
-  background: rgba(10, 14, 26, 0.7);
-  padding: 4px;
-  border-radius: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-}
-
-.nav-tab-btn {
-  display: flex;
+/* Navigation Link Buttons (in Admin only) */
+.nav-link-btn {
+  display: inline-flex;
   align-items: center;
-  gap: 8px;
-  padding: 10px 20px;
-  border-radius: 9px;
+  gap: 6px;
+  padding: 8px 14px;
+  border-radius: 8px;
   font-family: var(--font-heading);
-  font-size: 1rem;
+  font-size: 0.88rem;
   font-weight: 700;
-  letter-spacing: 1px;
-  border: none;
-  cursor: pointer;
-  background: transparent;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
   color: var(--text-secondary);
-  transition: all 0.25s ease;
   text-decoration: none;
+  cursor: pointer;
+  transition: all 0.2s ease;
 }
 
-.nav-tab-btn:hover {
-  color: var(--text-primary);
-}
-
-.nav-tab-btn.active {
-  background: linear-gradient(135deg, rgba(0, 242, 254, 0.2), rgba(157, 78, 221, 0.25));
-  color: #ffffff;
-  border: 1px solid rgba(0, 242, 254, 0.4);
-  box-shadow: 0 0 16px rgba(0, 242, 254, 0.25);
+.nav-link-btn:hover {
+  background: rgba(0, 242, 254, 0.15);
+  border-color: rgba(0, 242, 254, 0.4);
+  color: #fff;
 }
 
 /* Stats Ribbon */
@@ -628,7 +616,125 @@ body::before {
 }
 
 /* =======================================
-   ADMIN PANEL STYLES (Prompt 2 & 3 Requirements)
+   ADMIN PASSWORD GATE (Suzie_zoro_1211)
+   ======================================= */
+.admin-auth-screen {
+  min-height: 70vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.admin-auth-card {
+  width: 100%;
+  max-width: 450px;
+  padding: 36px 30px;
+  border-radius: 20px;
+  border: 1px solid rgba(255, 42, 133, 0.4);
+  background: linear-gradient(165deg, rgba(18, 22, 38, 0.9), rgba(10, 14, 25, 0.95));
+  box-shadow: 0 15px 45px rgba(0, 0, 0, 0.7), 0 0 30px rgba(255, 42, 133, 0.15);
+  text-align: center;
+}
+
+.auth-lock-icon {
+  width: 64px;
+  height: 64px;
+  margin: 0 auto 18px;
+  border-radius: 16px;
+  background: linear-gradient(135deg, rgba(255, 42, 133, 0.2), rgba(157, 78, 221, 0.2));
+  border: 1px solid rgba(255, 42, 133, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--neon-pink);
+  box-shadow: 0 0 20px rgba(255, 42, 133, 0.3);
+}
+
+.auth-title {
+  font-family: var(--font-display);
+  font-size: 1.35rem;
+  letter-spacing: 1.5px;
+  color: #fff;
+  margin-bottom: 6px;
+  text-transform: uppercase;
+}
+
+.auth-subtitle {
+  color: var(--text-secondary);
+  font-size: 0.88rem;
+  margin-bottom: 24px;
+}
+
+.auth-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.auth-input-wrapper {
+  position: relative;
+}
+
+.auth-input {
+  width: 100%;
+  padding: 13px 44px 13px 16px;
+  background: rgba(7, 10, 18, 0.95);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 10px;
+  color: #fff;
+  font-size: 1rem;
+  font-family: var(--font-sans);
+  letter-spacing: 1px;
+  outline: none;
+  transition: all 0.25s ease;
+}
+
+.auth-input:focus {
+  border-color: var(--neon-pink);
+  box-shadow: 0 0 14px rgba(255, 42, 133, 0.4);
+}
+
+.auth-toggle-pwd {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+}
+
+.auth-submit-btn {
+  padding: 13px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 42, 133, 0.5);
+  background: linear-gradient(135deg, rgba(255, 42, 133, 0.35), rgba(157, 78, 221, 0.4));
+  color: #fff;
+  font-family: var(--font-display);
+  font-size: 0.95rem;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  box-shadow: 0 4px 18px rgba(255, 42, 133, 0.25);
+  transition: all 0.2s ease;
+}
+
+.auth-submit-btn:hover {
+  background: linear-gradient(135deg, rgba(255, 42, 133, 0.5), rgba(157, 78, 221, 0.55));
+  box-shadow: 0 6px 24px rgba(255, 42, 133, 0.45);
+}
+
+/* =======================================
+   ADMIN PANEL STYLES
    ======================================= */
 .admin-panel-container {
   padding: 30px;
@@ -663,60 +769,6 @@ body::before {
   color: var(--text-secondary);
   font-size: 0.92rem;
   margin-top: 5px;
-}
-
-/* Webhook Configuration Box (Prompt 3 Backend Integration) */
-.webhook-config-box {
-  background: rgba(12, 17, 30, 0.8);
-  border: 1px solid rgba(0, 242, 254, 0.25);
-  border-radius: 14px;
-  padding: 16px 20px;
-  margin-bottom: 24px;
-}
-
-.webhook-config-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 12px;
-  flex-wrap: wrap;
-  gap: 10px;
-}
-
-.webhook-config-title {
-  font-family: var(--font-heading);
-  font-size: 1rem;
-  font-weight: 700;
-  letter-spacing: 1px;
-  color: var(--neon-cyan);
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  text-transform: uppercase;
-}
-
-.webhook-input-group {
-  display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-
-.webhook-input {
-  flex: 1;
-  min-width: 280px;
-  padding: 10px 14px;
-  background: rgba(7, 10, 18, 0.9);
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  border-radius: 8px;
-  color: #fff;
-  font-size: 0.88rem;
-  outline: none;
-  font-family: monospace;
-}
-
-.webhook-input:focus {
-  border-color: var(--neon-cyan);
-  box-shadow: 0 0 10px var(--neon-cyan-glow);
 }
 
 .admin-controls-bar {
@@ -1023,14 +1075,6 @@ body::before {
     width: 100%;
     justify-content: space-between;
   }
-  .view-toggle-nav {
-    width: 100%;
-    justify-content: stretch;
-  }
-  .nav-tab-btn {
-    flex: 1;
-    justify-content: center;
-  }
   .slots-grid {
     grid-template-columns: 1fr;
   }
@@ -1040,8 +1084,5 @@ body::before {
   .admin-controls-bar {
     flex-direction: column;
     align-items: stretch;
-  }
-  .webhook-input-group {
-    flex-direction: column;
   }
 }

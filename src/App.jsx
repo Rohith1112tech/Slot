@@ -5,7 +5,6 @@ import {
   UserCheck, 
   Lock, 
   Unlock, 
-  Gamepad2, 
   Sparkles, 
   Users, 
   CheckCircle2, 
@@ -20,9 +19,13 @@ import {
   X,
   Search,
   Filter,
-  Link as LinkIcon,
   RefreshCw,
-  Server
+  Eye,
+  EyeOff,
+  LogOut,
+  ExternalLink,
+  KeyRound,
+  Crosshair
 } from 'lucide-react';
 import { 
   DEFAULT_WEBHOOK_URL, 
@@ -31,6 +34,7 @@ import {
 } from './webhookService';
 
 const TOTAL_SLOTS = 12;
+const ADMIN_PASSWORD = 'Suzie_zoro_1211';
 
 // Initial 12 slots template
 const generateInitialSlots = () => {
@@ -43,28 +47,36 @@ const generateInitialSlots = () => {
 };
 
 export default function App() {
-  // Sync view state with URL hash (#/admin or #/player)
-  const getInitialView = () => {
+  // Determine route: /admin or /player
+  const detectRoute = () => {
+    const path = window.location.pathname.toLowerCase();
     const hash = window.location.hash.toLowerCase();
-    if (hash.includes('admin')) return 'admin';
+    if (path.includes('/admin') || hash.includes('admin')) {
+      return 'admin';
+    }
     return 'player';
   };
 
-  const [activeView, setActiveView] = useState(getInitialView);
-  
-  // Google Apps Script Webhook URL configuration
-  const [webhookUrl, setWebhookUrl] = useState(() => {
-    return localStorage.getItem('nexus_gas_webhook_url') || DEFAULT_WEBHOOK_URL;
+  const [activeView, setActiveView] = useState(detectRoute);
+
+  // Admin authentication state (persists across refresh in current session)
+  const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(() => {
+    return sessionStorage.getItem('jack_sparrow_admin_auth') === 'true';
   });
-  const [webhookInputDraft, setWebhookInputDraft] = useState(webhookUrl);
-  
+  const [passwordInput, setPasswordInput] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [authError, setAuthError] = useState('');
+
+  // Fixed backend Google Apps Script Webhook URL
+  const webhookUrl = DEFAULT_WEBHOOK_URL;
+
   // Backend sync status: 'idle' | 'syncing' | 'connected' | 'error' | 'local'
   const [syncStatus, setSyncStatus] = useState('idle');
   const [lastSyncedTime, setLastSyncedTime] = useState(null);
 
   // 12 Tournament Slots State
   const [slots, setSlots] = useState(() => {
-    const saved = localStorage.getItem('nexus_tournament_slots');
+    const saved = localStorage.getItem('jack_sparrow_slots');
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
@@ -98,82 +110,64 @@ export default function App() {
     }, 4000);
   };
 
-  // Sync slots to localStorage as resilient offline cache
+  // Sync slots to localStorage for resilience
   useEffect(() => {
-    localStorage.setItem('nexus_tournament_slots', JSON.stringify(slots));
+    localStorage.setItem('jack_sparrow_slots', JSON.stringify(slots));
   }, [slots]);
 
-  // Synchronize URL hash with active view & listen to hash changes
+  // Synchronize browser history and path changes
   useEffect(() => {
-    const handleHashChange = () => {
-      const hash = window.location.hash.toLowerCase();
-      if (hash.includes('admin')) {
-        setActiveView('admin');
-      } else {
-        setActiveView('player');
-      }
+    const handleRouteChange = () => {
+      setActiveView(detectRoute());
     };
 
-    window.addEventListener('hashchange', handleHashChange);
-    return () => window.removeEventListener('hashchange', handleHashChange);
+    window.addEventListener('popstate', handleRouteChange);
+    window.addEventListener('hashchange', handleRouteChange);
+    return () => {
+      window.removeEventListener('popstate', handleRouteChange);
+      window.removeEventListener('hashchange', handleRouteChange);
+    };
   }, []);
 
-  const switchView = (view) => {
-    setActiveView(view);
-    window.location.hash = `#/${view}`;
+  const navigateTo = (path) => {
+    window.history.pushState({}, '', path);
+    setActiveView(path.includes('admin') ? 'admin' : 'player');
   };
 
   /* ========================================================
      API LOGIC: ON LOAD (GET)
-     Send GET request to webhook to fetch slots and populate UI
      ======================================================== */
-  const loadSlotsFromBackend = useCallback(async (targetUrl = webhookUrl) => {
-    if (!targetUrl || !targetUrl.trim()) {
+  const loadSlotsFromBackend = useCallback(async () => {
+    if (!webhookUrl || !webhookUrl.trim()) {
       setSyncStatus('local');
       return;
     }
 
     setSyncStatus('syncing');
     try {
-      const remoteSlots = await fetchSlotsFromWebhook(targetUrl);
+      const remoteSlots = await fetchSlotsFromWebhook(webhookUrl);
       if (remoteSlots && remoteSlots.length === TOTAL_SLOTS) {
         setSlots(remoteSlots);
         setSyncStatus('connected');
         setLastSyncedTime(new Date().toLocaleTimeString());
-        showToast('☁️ Synced 12 slots with Google Apps Script backend');
       } else {
-        throw new Error('Received unexpected slot count');
+        throw new Error('Received invalid slot count');
       }
     } catch (err) {
-      console.warn('Webhook GET load warning:', err.message);
+      console.warn('Webhook GET sync warning:', err.message);
       setSyncStatus('error');
-      // Gracefully fall back to local cached slots
     }
   }, [webhookUrl]);
 
-  // Execute GET on initial mount
   useEffect(() => {
     loadSlotsFromBackend();
   }, [loadSlotsFromBackend]);
 
-  // Save new Webhook URL
-  const handleSaveWebhookUrl = () => {
-    const cleanUrl = webhookInputDraft.trim();
-    setWebhookUrl(cleanUrl);
-    localStorage.setItem('nexus_gas_webhook_url', cleanUrl);
-    showToast(cleanUrl ? 'Webhook URL saved. Testing connection...' : 'Webhook URL cleared (Local Mode)');
-    loadSlotsFromBackend(cleanUrl);
-  };
-
   /* ========================================================
      AUTO-SAVE (POST) HELPER
-     Fires a POST request with:
-     { slotNumber, teamName, iglName, actionType }
      ======================================================== */
   const triggerAutoSave = async (slotNumber, teamName, iglName, actionType) => {
-    if (!webhookUrl || !webhookUrl.trim()) {
-      return; // Working in local mode
-    }
+    if (!webhookUrl || !webhookUrl.trim()) return;
 
     setSyncStatus('syncing');
     try {
@@ -188,8 +182,31 @@ export default function App() {
     } catch (err) {
       console.error('Webhook POST auto-save failed:', err);
       setSyncStatus('error');
-      showToast(`⚠️ Auto-save POST failed: ${err.message}`, 'error');
+      showToast(`⚠️ Sync failed: ${err.message}`, 'error');
     }
+  };
+
+  /* ========================================================
+     ADMIN AUTHENTICATION (Suzie_zoro_1211)
+     ======================================================== */
+  const handleAdminLogin = (e) => {
+    e.preventDefault();
+    if (passwordInput === ADMIN_PASSWORD) {
+      setIsAdminAuthenticated(true);
+      sessionStorage.setItem('jack_sparrow_admin_auth', 'true');
+      setPasswordInput('');
+      setAuthError('');
+      showToast('⚔️ Admin Access Granted. Welcome Commander!');
+    } else {
+      setAuthError('Access Denied: Incorrect Admin Password');
+    }
+  };
+
+  const handleAdminLogout = () => {
+    setIsAdminAuthenticated(false);
+    sessionStorage.removeItem('jack_sparrow_admin_auth');
+    showToast('Admin logged out successfully.');
+    navigateTo('/player');
   };
 
   /* ========================================================
@@ -209,7 +226,7 @@ export default function App() {
   };
 
   const handleClaimSlot = async (slotNumber) => {
-    // LOCKING VALIDATION: Verify locally that the slot is still isBooked: false
+    // Locking Validation: verify slot is still isBooked: false
     const targetSlot = slots.find(s => s.slotNumber === slotNumber);
     if (!targetSlot || targetSlot.isBooked) {
       showToast('❌ Slot already taken! Please choose another slot.', 'error');
@@ -232,7 +249,7 @@ export default function App() {
       return;
     }
 
-    // Instantly update UI (optimistic update)
+    // Optimistic UI update
     setSlots(prevSlots =>
       prevSlots.map(slot =>
         slot.slotNumber === slotNumber
@@ -241,24 +258,21 @@ export default function App() {
       )
     );
 
-    // Clear draft form inputs
     setDraftInputs(prev => {
       const next = { ...prev };
       delete next[slotNumber];
       return next;
     });
 
-    showToast(`⚔️ Slot #${slotNumber} locked for "${teamName}"!`);
+    showToast(`🎯 Slot #${slotNumber} claimed for "${teamName}"!`);
 
-    // AUTO-SAVE (POST): Send actionType: 'CLAIM'
+    // Auto-Save POST
     await triggerAutoSave(slotNumber, teamName, iglName, 'CLAIM');
   };
 
   /* ========================================================
-     ADMIN PANEL ACTIONS (EDIT, CLEAR, MANUAL ASSIGN)
+     ADMIN ACTIONS (EDIT, CLEAR, MANUAL ASSIGN, RESET)
      ======================================================== */
-
-  // 1. Edit booked slot
   const startEditing = (slot) => {
     setEditingSlots(prev => ({
       ...prev,
@@ -307,7 +321,6 @@ export default function App() {
       return;
     }
 
-    // Update state locally
     setSlots(prevSlots =>
       prevSlots.map(slot =>
         slot.slotNumber === slotNumber
@@ -319,13 +332,10 @@ export default function App() {
     cancelEditing(slotNumber);
     showToast(`✅ Slot #${slotNumber} updated to "${teamName}"`);
 
-    // AUTO-SAVE (POST): Send actionType: 'EDIT'
     await triggerAutoSave(slotNumber, teamName, iglName, 'EDIT');
   };
 
-  // 2. Clear / Delete slot
   const handleClearSlot = async (slotNumber) => {
-    // Immediately reset isBooked to false and wipe team data
     setSlots(prevSlots =>
       prevSlots.map(slot =>
         slot.slotNumber === slotNumber
@@ -343,11 +353,9 @@ export default function App() {
     cancelAssigning(slotNumber);
     showToast(`🗑️ Slot #${slotNumber} cleared & reopened on Player View!`);
 
-    // AUTO-SAVE (POST): Send actionType: 'CLEAR'
     await triggerAutoSave(slotNumber, '', '', 'CLEAR');
   };
 
-  // 3. Manual assign to empty slot
   const startAssigning = (slotNumber) => {
     setAssigningSlots(prev => ({
       ...prev,
@@ -405,13 +413,11 @@ export default function App() {
     );
 
     cancelAssigning(slotNumber);
-    showToast(`⚡ Admin assigned "${teamName}" to Slot #${slotNumber}`);
+    showToast(`⚡ Assigned "${teamName}" to Slot #${slotNumber}`);
 
-    // AUTO-SAVE (POST): Send actionType: 'MANUAL_ASSIGN'
     await triggerAutoSave(slotNumber, teamName, iglName, 'MANUAL_ASSIGN');
   };
 
-  // 4. Reset entire tournament
   const handleResetAll = async () => {
     if (window.confirm('Are you sure you want to reset all 12 tournament slots?')) {
       const fresh = generateInitialSlots();
@@ -422,7 +428,6 @@ export default function App() {
       setAssigningSlots({});
       showToast('Tournament grid has been completely wiped and reset.');
 
-      // AUTO-SAVE (POST): Send actionType: 'RESET_ALL'
       await triggerAutoSave(0, '', '', 'RESET_ALL');
     }
   };
@@ -431,7 +436,7 @@ export default function App() {
   const bookedCount = slots.filter(s => s.isBooked).length;
   const availableCount = TOTAL_SLOTS - bookedCount;
 
-  // Filter & Search for Admin Master Dashboard
+  // Filter & Search
   const filteredSlots = slots.filter(slot => {
     if (adminFilter === 'booked' && !slot.isBooked) return false;
     if (adminFilter === 'open' && slot.isBooked) return false;
@@ -460,20 +465,20 @@ export default function App() {
         </div>
       )}
 
-      {/* Main Top Header */}
+      {/* Top Header */}
       <header className="app-header glass-panel">
         <div className="brand-section">
           <div className="brand-icon-wrapper">
-            <Trophy size={28} />
+            <Crosshair size={28} />
           </div>
           <div>
-            <h1 className="brand-title">NEXUS ARENA</h1>
-            <p className="brand-subtitle">12-Slot Championship Registration System</p>
+            <h1 className="brand-title">JACK SPARROW</h1>
+            <p className="brand-subtitle">FREE FIRE // 12-SLOT TOURNAMENT</p>
           </div>
         </div>
 
         <div className="header-actions-group">
-          {/* Webhook Sync Status Pill */}
+          {/* Cloud Sync Status Indicator */}
           <div 
             className={`sync-status-pill ${
               syncStatus === 'connected' ? 'connected' :
@@ -493,104 +498,103 @@ export default function App() {
             <span>
               {syncStatus === 'connected' ? 'BACKEND SYNCED' :
                syncStatus === 'syncing' ? 'SYNCING...' :
-               syncStatus === 'error' ? 'SYNC ISSUE (LOCAL ACTIVE)' : 'LOCAL MODE'}
+               syncStatus === 'error' ? 'LOCAL ACTIVE' : 'LOCAL MODE'}
             </span>
           </div>
 
           {/* Quick Manual Refresh button */}
-          {webhookUrl && (
-            <button 
-              type="button"
-              className="action-chip cancel"
-              onClick={() => loadSlotsFromBackend()}
-              title="Refresh slots from backend"
-              style={{ padding: '8px 12px' }}
-            >
-              <RefreshCw size={14} className={syncStatus === 'syncing' ? 'spin' : ''} />
-            </button>
-          )}
+          <button 
+            type="button"
+            className="action-chip cancel"
+            onClick={loadSlotsFromBackend}
+            title="Refresh slots from backend"
+            style={{ padding: '8px 12px' }}
+          >
+            <RefreshCw size={14} className={syncStatus === 'syncing' ? 'spin' : ''} />
+          </button>
 
-          {/* View Switcher: Player View vs Admin Panel */}
-          <nav className="view-toggle-nav">
-            <button 
-              type="button"
-              className={`nav-tab-btn ${activeView === 'player' ? 'active' : ''}`}
-              onClick={() => switchView('player')}
-              title="Switch to Player Registration View"
-            >
-              <Gamepad2 size={18} />
-              Player View
-            </button>
-            <button 
-              type="button"
-              className={`nav-tab-btn ${activeView === 'admin' ? 'active' : ''}`}
-              onClick={() => switchView('admin')}
-              title="Switch to Admin Management Panel (URL: #/admin)"
-            >
-              <Settings size={18} />
-              Admin Panel
-            </button>
-          </nav>
+          {/* In Admin Panel ONLY: Provide Navigation Links to Public Player View and Logout */}
+          {activeView === 'admin' && isAdminAuthenticated && (
+            <>
+              <button
+                type="button"
+                className="nav-link-btn"
+                onClick={() => navigateTo('/player')}
+                title="View Public Player Page"
+              >
+                <ExternalLink size={14} /> Player Page
+              </button>
+              <button
+                type="button"
+                className="nav-link-btn"
+                onClick={handleAdminLogout}
+                style={{ borderColor: 'rgba(239, 68, 68, 0.4)', color: '#f87171' }}
+                title="Lock Admin Panel"
+              >
+                <LogOut size={14} /> Logout
+              </button>
+            </>
+          )}
         </div>
       </header>
 
-      {/* Tournament Live Metrics Ribbon */}
-      <section className="stats-ribbon">
-        <div className="stat-card glass-panel total">
-          <div className="stat-icon" style={{ color: '#00f2fe' }}>
-            <Users size={22} />
-          </div>
-          <div className="stat-info">
-            <div className="stat-label">Total Tournament Slots</div>
-            <div className="stat-value">{TOTAL_SLOTS}</div>
-          </div>
-        </div>
-
-        <div className="stat-card glass-panel booked">
-          <div className="stat-icon" style={{ color: '#ff2a85' }}>
-            <Lock size={22} />
-          </div>
-          <div className="stat-info">
-            <div className="stat-label">Booked Slots</div>
-            <div className="stat-value">{bookedCount}</div>
-          </div>
-        </div>
-
-        <div className="stat-card glass-panel available">
-          <div className="stat-icon" style={{ color: '#10b981' }}>
-            <Unlock size={22} />
-          </div>
-          <div className="stat-info">
-            <div className="stat-label">Available Slots</div>
-            <div className="stat-value">{availableCount}</div>
-          </div>
-        </div>
-
-        <div className="stat-card glass-panel status">
-          <div className="stat-icon" style={{ color: '#9d4edd' }}>
-            <Flame size={22} />
-          </div>
-          <div className="stat-info">
-            <div className="stat-label">Registration Status</div>
-            <div className="stat-value" style={{ fontSize: '1.15rem' }}>
-              {availableCount === 0 ? 'ROSTER FULL' : 'REGISTRATION LIVE'}
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Conditional View Rendering */}
+      {/* Conditional Rendering: Player View vs Admin Panel */}
       {activeView === 'player' ? (
         /* ========================================================
-           PLAYER VIEW
+           PLAYER VIEW (NO ADMIN BUTTONS/TABS)
            ======================================================== */
         <main>
+          {/* Tournament Live Metrics Ribbon */}
+          <section className="stats-ribbon">
+            <div className="stat-card glass-panel total">
+              <div className="stat-icon" style={{ color: '#00f2fe' }}>
+                <Users size={22} />
+              </div>
+              <div className="stat-info">
+                <div className="stat-label">Total Tournament Slots</div>
+                <div className="stat-value">{TOTAL_SLOTS}</div>
+              </div>
+            </div>
+
+            <div className="stat-card glass-panel booked">
+              <div className="stat-icon" style={{ color: '#ff2a85' }}>
+                <Lock size={22} />
+              </div>
+              <div className="stat-info">
+                <div className="stat-label">Booked Slots</div>
+                <div className="stat-value">{bookedCount}</div>
+              </div>
+            </div>
+
+            <div className="stat-card glass-panel available">
+              <div className="stat-icon" style={{ color: '#10b981' }}>
+                <Unlock size={22} />
+              </div>
+              <div className="stat-info">
+                <div className="stat-label">Available Slots</div>
+                <div className="stat-value">{availableCount}</div>
+              </div>
+            </div>
+
+            <div className="stat-card glass-panel status">
+              <div className="stat-icon" style={{ color: '#9d4edd' }}>
+                <Flame size={22} />
+              </div>
+              <div className="stat-info">
+                <div className="stat-label">Registration Status</div>
+                <div className="stat-value" style={{ fontSize: '1.15rem' }}>
+                  {availableCount === 0 ? 'ROSTER FULL' : 'REGISTRATION LIVE'}
+                </div>
+              </div>
+            </div>
+          </section>
+
           <div className="slots-section-header">
             <h2 className="section-title">
-              <span>//</span> Tournament Grid Roster
+              <span>//</span> Free Fire Roster Grid
             </h2>
             <div style={{ color: '#94a3b8', fontSize: '0.9rem' }}>
-              Select any unlocked slot below to register your squad
+              Select any open slot below to register your squad
             </div>
           </div>
 
@@ -696,7 +700,7 @@ export default function App() {
                           id={`team-input-${slot.slotNumber}`}
                           type="text" 
                           className="form-input" 
-                          placeholder="e.g. Sentinels, Fnatic..."
+                          placeholder="Enter squad name..."
                           value={draft.teamName}
                           onChange={(e) => handleInputChange(slot.slotNumber, 'teamName', e.target.value)}
                         />
@@ -710,7 +714,7 @@ export default function App() {
                           id={`igl-input-${slot.slotNumber}`}
                           type="text" 
                           className="form-input" 
-                          placeholder="e.g. Boaster, TenZ..."
+                          placeholder="Enter leader handle..."
                           value={draft.iglName}
                           onChange={(e) => handleInputChange(slot.slotNumber, 'iglName', e.target.value)}
                         />
@@ -740,329 +744,354 @@ export default function App() {
         </main>
       ) : (
         /* ========================================================
-           ADMIN PANEL (Prompt 2 & 3: Master Lobby & Backend Webhook)
+           ADMIN PANEL (PASSWORD PROTECTED: Suzie_zoro_1211)
            ======================================================== */
-        <main className="admin-panel-container glass-panel">
-          {/* Header */}
-          <div className="admin-header">
-            <div className="admin-title-area">
-              <h2>Master Dashboard // Lobby Controller</h2>
-              <p>
-                Manage all 12 slots, edit team typos, clear slots, assign squads, and link your Google Apps Script backend.
-              </p>
-            </div>
-            <div>
-              <button 
-                type="button"
-                className="action-chip reset" 
-                onClick={handleResetAll}
-                style={{ padding: '10px 18px', display: 'flex', alignItems: 'center', gap: '8px' }}
-                title="Wipe all 12 slots back to empty"
-              >
-                <RotateCcw size={16} /> Reset All 12 Slots
-              </button>
-            </div>
-          </div>
-
-          {/* Webhook Backend Integration Card (Prompt 3) */}
-          <div className="webhook-config-box">
-            <div className="webhook-config-header">
-              <div className="webhook-config-title">
-                <Server size={18} />
-                Google Apps Script Webhook URL
+        !isAdminAuthenticated ? (
+          /* Password Authentication Gate */
+          <main className="admin-auth-screen">
+            <div className="admin-auth-card glass-panel">
+              <div className="auth-lock-icon">
+                <KeyRound size={30} />
               </div>
-              <span style={{ fontSize: '0.8rem', color: '#94a3b8' }}>
-                Auto-saves GET (load) & POST (mutations) to your Google Drive / Sheet
-              </span>
-            </div>
+              <h2 className="auth-title">JACK SPARROW ADMIN</h2>
+              <p className="auth-subtitle">
+                Enter security password to manage tournament lobby slots
+              </p>
 
-            <div className="webhook-input-group">
-              <input 
-                type="text"
-                className="webhook-input"
-                placeholder="https://script.google.com/macros/s/.../exec"
-                value={webhookInputDraft}
-                onChange={(e) => setWebhookInputDraft(e.target.value)}
-              />
-              <button 
-                type="button"
-                className="action-chip save"
-                onClick={handleSaveWebhookUrl}
-              >
-                <LinkIcon size={14} /> Connect Webhook
-              </button>
-              {webhookUrl && (
+              <form onSubmit={handleAdminLogin} className="auth-form">
+                <div className="auth-input-wrapper">
+                  <input 
+                    type={showPassword ? 'text' : 'password'}
+                    className="auth-input"
+                    placeholder="Enter admin password..."
+                    value={passwordInput}
+                    onChange={(e) => {
+                      setPasswordInput(e.target.value);
+                      setAuthError('');
+                    }}
+                    autoFocus
+                  />
+                  <button 
+                    type="button"
+                    className="auth-toggle-pwd"
+                    onClick={() => setShowPassword(!showPassword)}
+                    tabIndex="-1"
+                  >
+                    {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                  </button>
+                </div>
+
+                {authError && (
+                  <div className="error-text" style={{ textAlign: 'center', marginTop: '-4px' }}>
+                    <AlertCircle size={14} style={{ display: 'inline', verticalAlign: 'text-bottom', marginRight: '4px' }} />
+                    {authError}
+                  </div>
+                )}
+
+                <button type="submit" className="auth-submit-btn">
+                  <Lock size={16} /> Unlock Dashboard
+                </button>
+              </form>
+
+              <div style={{ marginTop: '20px' }}>
+                <button
+                  type="button"
+                  onClick={() => navigateTo('/player')}
+                  style={{
+                    background: 'transparent',
+                    border: 'none',
+                    color: '#94a3b8',
+                    cursor: 'pointer',
+                    fontSize: '0.85rem',
+                    textDecoration: 'underline'
+                  }}
+                >
+                  ← Return to Public Player Page
+                </button>
+              </div>
+            </div>
+          </main>
+        ) : (
+          /* Unlocked Admin Master Dashboard */
+          <main className="admin-panel-container glass-panel">
+            {/* Header */}
+            <div className="admin-header">
+              <div className="admin-title-area">
+                <h2>Jack Sparrow Lobby Master Controller</h2>
+                <p>
+                  Direct oversight of all 12 slots. Edit squad typos, clear bookings, or assign teams. Auto-saving directly to Google Sheets.
+                </p>
+              </div>
+              <div>
                 <button 
                   type="button"
-                  className="action-chip cancel"
-                  onClick={() => loadSlotsFromBackend()}
-                  title="Force refresh now via GET"
+                  className="action-chip reset" 
+                  onClick={handleResetAll}
+                  style={{ padding: '10px 18px', display: 'flex', alignItems: 'center', gap: '8px' }}
+                  title="Wipe all 12 slots back to empty"
                 >
-                  <RefreshCw size={14} className={syncStatus === 'syncing' ? 'spin' : ''} /> Fetch Now
+                  <RotateCcw size={16} /> Reset All 12 Slots
                 </button>
-              )}
-            </div>
-          </div>
-
-          {/* Admin Filter & Search Bar */}
-          <div className="admin-controls-bar">
-            <div className="admin-filter-group">
-              <span style={{ fontSize: '0.85rem', color: '#94a3b8', marginRight: '6px', fontWeight: 600 }}>
-                <Filter size={14} style={{ display: 'inline', verticalAlign: 'middle', marginRight: '4px' }} />
-                Filter:
-              </span>
-              <button
-                type="button"
-                className={`filter-pill ${adminFilter === 'all' ? 'active' : ''}`}
-                onClick={() => setAdminFilter('all')}
-              >
-                All Slots ({TOTAL_SLOTS})
-              </button>
-              <button
-                type="button"
-                className={`filter-pill ${adminFilter === 'booked' ? 'active' : ''}`}
-                onClick={() => setAdminFilter('booked')}
-              >
-                Booked ({bookedCount})
-              </button>
-              <button
-                type="button"
-                className={`filter-pill ${adminFilter === 'open' ? 'active' : ''}`}
-                onClick={() => setAdminFilter('open')}
-              >
-                Open ({availableCount})
-              </button>
+              </div>
             </div>
 
-            <div className="admin-search-wrapper">
-              <Search size={16} className="admin-search-icon" />
-              <input 
-                type="text"
-                className="admin-search-input"
-                placeholder="Search slot #, team or IGL..."
-                value={adminSearch}
-                onChange={(e) => setAdminSearch(e.target.value)}
-              />
-            </div>
-          </div>
-
-          {/* Master Dashboard Cards Grid */}
-          <div className="admin-cards-grid">
-            {filteredSlots.map((slot) => {
-              const isEditing = Boolean(editingSlots[slot.slotNumber]);
-              const editData = editingSlots[slot.slotNumber] || {};
-              const isAssigning = Boolean(assigningSlots[slot.slotNumber]);
-              const assignData = assigningSlots[slot.slotNumber] || {};
-
-              return (
-                <div 
-                  key={slot.slotNumber}
-                  className={`admin-slot-row-card ${isEditing ? 'is-editing' : ''} ${isAssigning ? 'is-assigning' : ''}`}
+            {/* Filter & Search Bar */}
+            <div className="admin-controls-bar">
+              <div className="admin-filter-group">
+                <span style={{ fontSize: '0.85rem', color: '#94a3b8', marginRight: '6px', fontWeight: 600 }}>
+                  <Filter size={14} style={{ display: 'inline', verticalAlign: 'middle', marginRight: '4px' }} />
+                  Filter:
+                </span>
+                <button
+                  type="button"
+                  className={`filter-pill ${adminFilter === 'all' ? 'active' : ''}`}
+                  onClick={() => setAdminFilter('all')}
                 >
-                  {/* Slot Header */}
-                  <div className="admin-slot-header">
-                    <div className="admin-slot-num">
-                      <Shield size={18} color={slot.isBooked ? '#ff2a85' : '#00f2fe'} />
-                      SLOT #{String(slot.slotNumber).padStart(2, '0')}
-                    </div>
-                    {slot.isBooked ? (
-                      <span className="slot-status-pill claimed">
-                        <Lock size={12} /> BOOKED
-                      </span>
-                    ) : (
-                      <span className="slot-status-pill open">
-                        <Unlock size={12} /> OPEN
-                      </span>
-                    )}
-                  </div>
+                  All Slots ({TOTAL_SLOTS})
+                </button>
+                <button
+                  type="button"
+                  className={`filter-pill ${adminFilter === 'booked' ? 'active' : ''}`}
+                  onClick={() => setAdminFilter('booked')}
+                >
+                  Booked ({bookedCount})
+                </button>
+                <button
+                  type="button"
+                  className={`filter-pill ${adminFilter === 'open' ? 'active' : ''}`}
+                  onClick={() => setAdminFilter('open')}
+                >
+                  Open ({availableCount})
+                </button>
+              </div>
 
-                  {/* Body: Editing Form vs Assigning Form vs Regular Display */}
-                  {isEditing ? (
-                    /* Inline Editing Mode (Fix Typos in Team Name / IGL) */
-                    <div className="admin-inline-form">
-                      <div style={{ fontSize: '0.8rem', color: '#fbbf24', fontWeight: 700, letterSpacing: '1px', textTransform: 'uppercase' }}>
-                        ✏️ Edit Slot Details
+              <div className="admin-search-wrapper">
+                <Search size={16} className="admin-search-icon" />
+                <input 
+                  type="text"
+                  className="admin-search-input"
+                  placeholder="Search slot #, team or IGL..."
+                  value={adminSearch}
+                  onChange={(e) => setAdminSearch(e.target.value)}
+                />
+              </div>
+            </div>
+
+            {/* Master Dashboard Cards Grid */}
+            <div className="admin-cards-grid">
+              {filteredSlots.map((slot) => {
+                const isEditing = Boolean(editingSlots[slot.slotNumber]);
+                const editData = editingSlots[slot.slotNumber] || {};
+                const isAssigning = Boolean(assigningSlots[slot.slotNumber]);
+                const assignData = assigningSlots[slot.slotNumber] || {};
+
+                return (
+                  <div 
+                    key={slot.slotNumber}
+                    className={`admin-slot-row-card ${isEditing ? 'is-editing' : ''} ${isAssigning ? 'is-assigning' : ''}`}
+                  >
+                    {/* Slot Header */}
+                    <div className="admin-slot-header">
+                      <div className="admin-slot-num">
+                        <Shield size={18} color={slot.isBooked ? '#ff2a85' : '#00f2fe'} />
+                        SLOT #{String(slot.slotNumber).padStart(2, '0')}
                       </div>
-
-                      <div className="form-group">
-                        <label className="form-label" style={{ fontSize: '0.78rem' }}>
-                          Team Name
-                        </label>
-                        <input 
-                          type="text"
-                          className="admin-inline-input"
-                          value={editData.teamName}
-                          onChange={(e) => handleEditChange(slot.slotNumber, 'teamName', e.target.value)}
-                          placeholder="Team Name"
-                          autoFocus
-                        />
-                      </div>
-
-                      <div className="form-group">
-                        <label className="form-label" style={{ fontSize: '0.78rem' }}>
-                          IGL Name
-                        </label>
-                        <input 
-                          type="text"
-                          className="admin-inline-input"
-                          value={editData.iglName}
-                          onChange={(e) => handleEditChange(slot.slotNumber, 'iglName', e.target.value)}
-                          placeholder="IGL Name"
-                        />
-                      </div>
-
-                      {editData.error && (
-                        <div className="error-text">
-                          <AlertCircle size={13} style={{ display: 'inline', verticalAlign: 'text-bottom', marginRight: '4px' }} />
-                          {editData.error}
-                        </div>
-                      )}
-
-                      <div className="admin-actions-group">
-                        <button 
-                          type="button"
-                          className="action-chip save"
-                          onClick={() => saveEditSlot(slot.slotNumber)}
-                        >
-                          <Check size={14} /> Save
-                        </button>
-                        <button 
-                          type="button"
-                          className="action-chip cancel"
-                          onClick={() => cancelEditing(slot.slotNumber)}
-                        >
-                          <X size={14} /> Cancel
-                        </button>
-                      </div>
-                    </div>
-                  ) : isAssigning ? (
-                    /* Manual Assign Form for Empty Slot */
-                    <div className="admin-inline-form">
-                      <div style={{ fontSize: '0.8rem', color: '#34d399', fontWeight: 700, letterSpacing: '1px', textTransform: 'uppercase' }}>
-                        ⚡ Manual Assign Slot
-                      </div>
-
-                      <div className="form-group">
-                        <label className="form-label" style={{ fontSize: '0.78rem' }}>
-                          Assign Team Name
-                        </label>
-                        <input 
-                          type="text"
-                          className="admin-inline-input"
-                          value={assignData.teamName}
-                          onChange={(e) => handleAssignChange(slot.slotNumber, 'teamName', e.target.value)}
-                          placeholder="Enter Team Name"
-                          autoFocus
-                        />
-                      </div>
-
-                      <div className="form-group">
-                        <label className="form-label" style={{ fontSize: '0.78rem' }}>
-                          Assign IGL Name
-                        </label>
-                        <input 
-                          type="text"
-                          className="admin-inline-input"
-                          value={assignData.iglName}
-                          onChange={(e) => handleAssignChange(slot.slotNumber, 'iglName', e.target.value)}
-                          placeholder="Enter IGL Name"
-                        />
-                      </div>
-
-                      {assignData.error && (
-                        <div className="error-text">
-                          <AlertCircle size={13} style={{ display: 'inline', verticalAlign: 'text-bottom', marginRight: '4px' }} />
-                          {assignData.error}
-                        </div>
-                      )}
-
-                      <div className="admin-actions-group">
-                        <button 
-                          type="button"
-                          className="action-chip save"
-                          onClick={() => saveManualAssign(slot.slotNumber)}
-                        >
-                          <Check size={14} /> Confirm Assign
-                        </button>
-                        <button 
-                          type="button"
-                          className="action-chip cancel"
-                          onClick={() => cancelAssigning(slot.slotNumber)}
-                        >
-                          <X size={14} /> Cancel
-                        </button>
-                      </div>
-                    </div>
-                  ) : (
-                    /* Normal Display Mode */
-                    <>
                       {slot.isBooked ? (
-                        <div className="admin-team-preview">
-                          <div className="admin-team-title">
-                            <Shield size={16} color="#00f2fe" />
-                            {slot.teamName}
-                          </div>
-                          <div className="admin-igl-title">
-                            <UserCheck size={15} />
-                            IGL: {slot.iglName || 'N/A'}
-                          </div>
-                        </div>
+                        <span className="slot-status-pill claimed">
+                          <Lock size={12} /> BOOKED
+                        </span>
                       ) : (
-                        <div className="admin-empty-state">
-                          <span>Slot is currently vacant</span>
-                          <span style={{ color: '#10b981', fontWeight: 700 }}>AVAILABLE</span>
-                        </div>
+                        <span className="slot-status-pill open">
+                          <Unlock size={12} /> OPEN
+                        </span>
                       )}
+                    </div>
 
-                      {/* Action Buttons */}
-                      <div className="admin-actions-group">
-                        {slot.isBooked ? (
-                          <>
-                            {/* Edit Button (to fix typos) */}
-                            <button 
-                              type="button"
-                              className="action-chip edit"
-                              onClick={() => startEditing(slot)}
-                              title="Edit team details / fix typos"
-                            >
-                              <Edit3 size={14} /> Edit
-                            </button>
+                    {/* Body: Editing Form vs Assigning Form vs Regular Display */}
+                    {isEditing ? (
+                      /* Inline Editing Mode (Fix Typos) */
+                      <div className="admin-inline-form">
+                        <div style={{ fontSize: '0.8rem', color: '#fbbf24', fontWeight: 700, letterSpacing: '1px', textTransform: 'uppercase' }}>
+                          ✏️ Edit Slot Details
+                        </div>
 
-                            {/* Clear/Delete Button (wipes slot & re-opens in Player View) */}
-                            <button 
-                              type="button"
-                              className="action-chip delete"
-                              onClick={() => handleClearSlot(slot.slotNumber)}
-                              title="Clear booking and make available on Player View"
-                            >
-                              <Trash2 size={14} /> Clear
-                            </button>
-                          </>
-                        ) : (
-                          /* Manual Assign Button for Empty Slot */
+                        <div className="form-group">
+                          <label className="form-label" style={{ fontSize: '0.78rem' }}>
+                            Team Name
+                          </label>
+                          <input 
+                            type="text"
+                            className="admin-inline-input"
+                            value={editData.teamName}
+                            onChange={(e) => handleEditChange(slot.slotNumber, 'teamName', e.target.value)}
+                            placeholder="Team Name"
+                            autoFocus
+                          />
+                        </div>
+
+                        <div className="form-group">
+                          <label className="form-label" style={{ fontSize: '0.78rem' }}>
+                            IGL Name
+                          </label>
+                          <input 
+                            type="text"
+                            className="admin-inline-input"
+                            value={editData.iglName}
+                            onChange={(e) => handleEditChange(slot.slotNumber, 'iglName', e.target.value)}
+                            placeholder="IGL Name"
+                          />
+                        </div>
+
+                        {editData.error && (
+                          <div className="error-text">
+                            <AlertCircle size={13} style={{ display: 'inline', verticalAlign: 'text-bottom', marginRight: '4px' }} />
+                            {editData.error}
+                          </div>
+                        )}
+
+                        <div className="admin-actions-group">
                           <button 
                             type="button"
-                            className="action-chip assign"
-                            onClick={() => startAssigning(slot.slotNumber)}
-                            title="Manually allocate a squad to this slot"
+                            className="action-chip save"
+                            onClick={() => saveEditSlot(slot.slotNumber)}
                           >
-                            <UserPlus size={14} /> Manual Assign
+                            <Check size={14} /> Save
                           </button>
-                        )}
+                          <button 
+                            type="button"
+                            className="action-chip cancel"
+                            onClick={() => cancelEditing(slot.slotNumber)}
+                          >
+                            <X size={14} /> Cancel
+                          </button>
+                        </div>
                       </div>
-                    </>
-                  )}
-                </div>
-              );
-            })}
-          </div>
+                    ) : isAssigning ? (
+                      /* Manual Assign Form for Empty Slot */
+                      <div className="admin-inline-form">
+                        <div style={{ fontSize: '0.8rem', color: '#34d399', fontWeight: 700, letterSpacing: '1px', textTransform: 'uppercase' }}>
+                          ⚡ Manual Assign Slot
+                        </div>
 
-          {filteredSlots.length === 0 && (
-            <div style={{ textAlign: 'center', padding: '40px 20px', color: '#64748b' }}>
-              No tournament slots match your current filter or search criteria.
+                        <div className="form-group">
+                          <label className="form-label" style={{ fontSize: '0.78rem' }}>
+                            Assign Team Name
+                          </label>
+                          <input 
+                            type="text"
+                            className="admin-inline-input"
+                            value={assignData.teamName}
+                            onChange={(e) => handleAssignChange(slot.slotNumber, 'teamName', e.target.value)}
+                            placeholder="Enter Team Name"
+                            autoFocus
+                          />
+                        </div>
+
+                        <div className="form-group">
+                          <label className="form-label" style={{ fontSize: '0.78rem' }}>
+                            Assign IGL Name
+                          </label>
+                          <input 
+                            type="text"
+                            className="admin-inline-input"
+                            value={assignData.iglName}
+                            onChange={(e) => handleAssignChange(slot.slotNumber, 'iglName', e.target.value)}
+                            placeholder="Enter IGL Name"
+                          />
+                        </div>
+
+                        {assignData.error && (
+                          <div className="error-text">
+                            <AlertCircle size={13} style={{ display: 'inline', verticalAlign: 'text-bottom', marginRight: '4px' }} />
+                            {assignData.error}
+                          </div>
+                        )}
+
+                        <div className="admin-actions-group">
+                          <button 
+                            type="button"
+                            className="action-chip save"
+                            onClick={() => saveManualAssign(slot.slotNumber)}
+                          >
+                            <Check size={14} /> Confirm Assign
+                          </button>
+                          <button 
+                            type="button"
+                            className="action-chip cancel"
+                            onClick={() => cancelAssigning(slot.slotNumber)}
+                          >
+                            <X size={14} /> Cancel
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      /* Normal Display Mode */
+                      <>
+                        {slot.isBooked ? (
+                          <div className="admin-team-preview">
+                            <div className="admin-team-title">
+                              <Shield size={16} color="#00f2fe" />
+                              {slot.teamName}
+                            </div>
+                            <div className="admin-igl-title">
+                              <UserCheck size={15} />
+                              IGL: {slot.iglName || 'N/A'}
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="admin-empty-state">
+                            <span>Slot is currently vacant</span>
+                            <span style={{ color: '#10b981', fontWeight: 700 }}>AVAILABLE</span>
+                          </div>
+                        )}
+
+                        {/* Action Buttons */}
+                        <div className="admin-actions-group">
+                          {slot.isBooked ? (
+                            <>
+                              <button 
+                                type="button"
+                                className="action-chip edit"
+                                onClick={() => startEditing(slot)}
+                                title="Edit team details / fix typos"
+                              >
+                                <Edit3 size={14} /> Edit
+                              </button>
+
+                              <button 
+                                type="button"
+                                className="action-chip delete"
+                                onClick={() => handleClearSlot(slot.slotNumber)}
+                                title="Clear booking and make available on Player View"
+                              >
+                                <Trash2 size={14} /> Clear
+                              </button>
+                            </>
+                          ) : (
+                            <button 
+                              type="button"
+                              className="action-chip assign"
+                              onClick={() => startAssigning(slot.slotNumber)}
+                              title="Manually allocate a squad to this slot"
+                            >
+                              <UserPlus size={14} /> Manual Assign
+                            </button>
+                          )}
+                        </div>
+                      </>
+                    )}
+                  </div>
+                );
+              })}
             </div>
-          )}
-        </main>
+
+            {filteredSlots.length === 0 && (
+              <div style={{ textAlign: 'center', padding: '40px 20px', color: '#64748b' }}>
+                No tournament slots match your current filter or search criteria.
+              </div>
+            )}
+          </main>
+        )
       )}
     </div>
   );
